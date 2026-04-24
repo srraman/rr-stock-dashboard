@@ -6,52 +6,51 @@ import time
 st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
 st.title("🛡️ North American Frontier Engine")
-st.info("Unbiased Protocol: Scanning TSX & US Exchanges. Displaying leaders priced under $150.")
+st.info("Unbiased Discovery: Dynamic searching for TSX & US Leaders under $150.")
 
-# Dynamic Industry IDs
+# Dynamic sector mapping
 industries = {
-    "🌀 Quantum & Advanced Tech": "computer-hardware",
-    "🔌 AI Infrastructure & Chips": "semiconductors", 
-    "🤖 Software & AI Platforms": "software-infrastructure",
-    "🔥 Energy & Uranium (AI Fuel)": "uranium",
-    "🏦 Core Wealth Compounders": "banks-diversified",
-    "🏗️ Infrastructure & Rail": "railroads"
+    "🌀 Quantum & Tech": "Technology",
+    "🔌 AI Infrastructure": "Semiconductors", 
+    "🤖 Software & AI": "Software—Infrastructure",
+    "🔥 Energy & Uranium": "Uranium",
+    "🏦 Core Wealth": "Banks—Diversified",
+    "🏗️ Infrastructure": "Railroads"
 }
 
 tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Listings (TSX/V)", "🇺🇸 US Listings (NYSE/Nasdaq)"])
 
 def build_dashboard(is_cad_mode):
-    for label, ind_key in industries.items():
+    for label, sector_key in industries.items():
         st.header(label)
         try:
-            ind_data = yf.Industry(ind_key)
-            # Search a very deep pool to find CAD names and mid-priced US names
-            pool_players = ind_data.top_companies.index.tolist()[:750] 
+            # Step 1: Broad search for active stocks in the sector
+            # Using yf.Search to find current trending tickers without hardcoding
+            query = f"{sector_key} {'Canada' if is_cad_mode else 'USA'}"
+            search_results = yf.Search(query, max_results=20).quotes
             
-            # Filter by Exchange
-            if is_cad_mode:
-                exchange_players = [t for t in pool_players if t.endswith((".TO", ".V"))]
-            else:
-                exchange_players = [t for t in pool_players if "." not in t]
-
             valid_stocks = []
-            
-            # Filter by Price and Data Quality
-            for ticker in exchange_players:
-                if len(valid_stocks) >= 4: break # We only need the top 4 per sector
+            for item in search_results:
+                ticker = item['symbol']
+                
+                # Filter strictly by exchange
+                if is_cad_mode and not ticker.endswith((".TO", ".V")): continue
+                if not is_cad_mode and "." in ticker: continue
+                
+                if len(valid_stocks) >= 4: break
                 
                 t_obj = yf.Ticker(ticker)
                 hist = t_obj.history(period="2y")
                 
                 if not hist.empty:
-                    current_price = hist['Close'].iloc[-1]
-                    # PRICE CEILING: Only show stocks under $150 (CAD or USD)
-                    if current_price < 150:
+                    curr_p = hist['Close'].iloc[-1]
+                    # PRICE & LIQUIDITY FILTER: Under $150 and has trading volume
+                    if curr_p < 150 and hist['Volume'].iloc[-1] > 1000:
                         valid_stocks.append((ticker, hist))
-                time.sleep(0.1) # Rapid scan delay
+                time.sleep(0.1)
 
             if not valid_stocks:
-                st.warning(f"No leaders under $150 found for {label} on this exchange.")
+                st.write(f"Scanning market for {label} leaders...")
                 continue
 
             cols = st.columns(4)
@@ -59,11 +58,7 @@ def build_dashboard(is_cad_mode):
                 with cols[i]:
                     curr_p = hist['Close'].iloc[-1]
                     growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
-                    currency = "CAD" if is_cad_mode else "USD"
-                    
-                    st.metric(label=f"{ticker} ({currency})", 
-                              value=f"${curr_p:.2f}", 
-                              delta=f"{growth:.1f}% (2Y)")
+                    st.metric(label=ticker, value=f"${curr_p:.2f}", delta=f"{growth:.1f}% (2Y)")
                     st.line_chart(hist['Close'], height=150)
         except:
             continue
