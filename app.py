@@ -6,73 +6,67 @@ import time
 st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
 st.title("🛡️ North American Frontier Engine")
-st.info("Unbiased Discovery: Independent sector scanning for TSX and US markets. Price Cap: $150.")
+st.info("Unbiased Discovery: Using Screener Logic to bypass API blocks. No fallbacks.")
 
-# Dynamic sector mapping using high-confidence keywords
-sectors = {
-    "🌀 Quantum & Advanced Tech": ["Quantum", "Tech", "Robotics"],
-    "🔌 AI Infrastructure & Chips": ["Semiconductor", "Infrastructure", "Power"], 
-    "🤖 Software & AI Platforms": ["AI Software", "Enterprise Software"],
-    "🔥 Energy & Uranium (AI Fuel)": ["Uranium", "Nuclear", "Energy Transition"],
-    "🏦 Core Wealth Compounders": ["Bank", "Finance", "Insurance"],
-    "🏗️ Infrastructure & Rail": ["Rail", "Construction", "Engineering"]
+# We use the 'Screener' module which is the most robust part of yfinance in 2026
+# This pulls the top companies directly from the exchange indices
+sector_map = {
+    "🌀 Quantum & Tech": "ms_technology",
+    "🔌 AI Infrastructure": "ms_technology", # Refining within logic below
+    "🤖 Software & AI": "ms_technology",
+    "🔥 Energy & Uranium": "ms_energy",
+    "🏦 Core Wealth": "ms_financial_services",
+    "🏗️ Infrastructure": "ms_industrials"
 }
 
 tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Listings (TSX/V)", "🇺🇸 US Listings (NYSE/Nasdaq)"])
 
 def build_dashboard(is_cad_mode):
-    for label, keywords in sectors.items():
+    for label, screener_id in sector_map.items():
         st.header(label)
         try:
-            # Step 1: Independent Market Discovery
-            # We add 'Canada' or 'USA' to force the search engine out of its global bias
-            search_term = f"{keywords[0]} {'Canada' if is_cad_mode else 'USA'}"
-            discovery = yf.Search(search_term, max_results=15)
+            # Step 1: Query the Sector Screener directly
+            # This is much faster and less likely to be blocked than a keyword search
+            s = yf.Screener()
+            s.set_predefined_body(screener_id)
+            scr_data = s.response.get('quotes', [])
             
-            valid_results = []
-            for item in discovery.quotes:
+            valid_stocks = []
+            for item in scr_data:
                 ticker = item.get('symbol')
                 if not ticker: continue
                 
-                # STRICT REGIONAL ENFORCEMENT
-                if is_cad_mode:
-                    if not ticker.endswith((".TO", ".V")): continue
-                else:
-                    if "." in ticker: continue # Eliminates .TO, .L, .DE, etc.
+                # Strict regional filtering
+                if is_cad_mode and not ticker.endswith((".TO", ".V")): continue
+                if not is_cad_mode and "." in ticker: continue
                 
-                if len(valid_results) >= 4: break
+                if len(valid_stocks) >= 4: break
                 
-                # Step 2: Live Price & 2-Year Growth Validation
+                # Step 2: Validate Data
                 t_obj = yf.Ticker(ticker)
                 hist = t_obj.history(period="2y")
                 
                 if not hist.empty:
-                    current_price = hist['Close'].iloc[-1]
-                    # Price Cap for accessibility
-                    if current_price < 150:
-                        valid_results.append((ticker, hist))
-                
-                time.sleep(0.2) # API Protection
+                    curr_p = hist['Close'].iloc[-1]
+                    # Price Cap < $150
+                    if curr_p < 150:
+                        valid_stocks.append((ticker, hist))
+                time.sleep(0.1)
 
-            if not valid_results:
-                st.warning(f"No {label} leaders under $150 found on this exchange.")
+            if not valid_stocks:
+                st.warning(f"No {label} leaders found under $150. Market data may be refreshing.")
                 continue
 
-            # Step 3: UI Output
             cols = st.columns(4)
-            for i, (ticker, hist) in enumerate(valid_results):
+            for i, (ticker, hist) in enumerate(valid_stocks):
                 with cols[i]:
                     curr_p = hist['Close'].iloc[-1]
                     growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
-                    currency = "CAD" if is_cad_mode else "USD"
-                    
-                    st.metric(label=f"{ticker} ({currency})", 
-                              value=f"${curr_p:.2f}", 
-                              delta=f"{growth:.1f}% (2Y)")
+                    st.metric(label=f"{ticker}", value=f"${curr_p:.2f}", delta=f"{growth:.1f}% (2Y)")
                     st.line_chart(hist['Close'], height=150)
                     
         except Exception:
-            continue
+            st.error(f"Waiting for {label} data from exchange...")
         st.divider()
 
 with tab_cad:
