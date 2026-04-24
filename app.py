@@ -3,68 +3,71 @@ import requests
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Growth Research Dashboard", layout="wide")
+st.set_page_config(page_title="Growth Potential Analyzer", layout="wide")
 
 API_KEY = "EM716SRFFX4E4SKM" 
 
-st.title("🛡️ 5-Year Growth Research Dashboard")
-st.markdown("""
-**How to use this tool:** Don't just look at the price. Look at the 5-year trend. 
-A stock that grows steadily over 5 years often has a stronger 'engine' than one that just spiked this week.
-""")
+st.title("🛡️ 5-Year Growth & Potential Analyzer")
+st.info("Goal: Identify stocks where the business growth matches the price growth.")
 
-def get_5y_data(symbol):
+def get_growth_data(symbol):
     symbol = symbol.upper().replace(".TO", "")
-    api_symbol = f"TSX:{symbol}"
-    # Using 'full' outputsize to get 5+ years of daily data
-    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={api_symbol}&outputsize=full&apikey={API_KEY}'
+    # 1. Get Price Data
+    url_price = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=TSX:{symbol}&outputsize=full&apikey={API_KEY}'
+    # 2. Get Fundamental Data (Revenue)
+    url_rev = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol=TSX:{symbol}&apikey={API_KEY}'
+    
     try:
-        r = requests.get(url)
-        data = r.json()
-        if "Time Series (Daily)" in data:
-            df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient='index')
-            df.index = pd.to_datetime(df.index)
-            df = df['4. close'].astype(float)
-            # Filter for the last 5 years only
-            five_years_ago = pd.Timestamp.now() - pd.DateOffset(years=5)
-            return df[df.index >= five_years_ago].sort_index()
+        r_p = requests.get(url_price).json()
+        r_r = requests.get(url_rev).json()
+        
+        prices = pd.DataFrame.from_dict(r_p["Time Series (Daily)"], orient='index')
+        prices.index = pd.to_datetime(prices.index)
+        prices = prices['4. close'].astype(float).sort_index()
+        
+        # We only want the last 5 years
+        five_y = prices[prices.index >= (pd.Timestamp.now() - pd.DateOffset(years=5))]
+        
+        return {
+            "prices": five_y,
+            "revenue_growth": r_r.get("QuarterlyRevenueGrowthYOY", "N/A"),
+            "profit_margin": r_r.get("ProfitMargin", "N/A"),
+            "description": r_r.get("Description", "No description available.")
+        }
     except:
         return None
-    return None
 
-# --- RESEARCH PORTFOLIO ---
-# Based on 2026 analyst consensus for long-term compounders
+# --- RESEARCH LIST ---
+# These 4 represent different 'types' of growth in 2026
 research_list = ["CSU.TO", "SHOP.TO", "BN.TO", "CNR.TO"]
 
-st.subheader("📈 Long-Term (5-Year) Trend Analysis")
 for stock in research_list:
-    prices = get_5y_data(stock)
-    if prices is not None:
-        col1, col2 = st.columns([1, 3])
+    data = get_growth_data(stock)
+    if data:
+        st.subheader(f"Analysis: {stock}")
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
         with col1:
-            current = prices.iloc[-1]
-            start = prices.iloc[0]
-            total_growth = ((current - start) / start) * 100
-            st.metric(label=f"{stock} (Today)", value=f"${current:.2f}", delta=f"{total_growth:.1f}% since 2021")
+            st.metric("Current Price", f"${data['prices'].iloc[-1]:.2f}")
+            st.write(f"**Revenue Growth (YoY):** {data['revenue_growth']}")
+        
         with col2:
-            st.line_chart(prices)
-        time.sleep(2) # Protect your 25-search limit
+            growth_pct = ((data['prices'].iloc[-1] - data['prices'].iloc[0]) / data['prices'].iloc[0]) * 100
+            st.metric("5-Year Price Growth", f"{growth_pct:.1f}%")
+            st.write(f"**Profit Margin:** {data['profit_margin']}")
 
-# --- THE DECISION TOOLKIT ---
-st.divider()
-st.subheader("🧠 How to Evaluate 'Growth Potential'")
-st.write("Use this checklist to decide if a stock is a 'Buy' for you. (Trends are NOT enough!)")
+        with col3:
+            st.line_chart(data['prices'])
+            
+        with st.expander(f"Why consider {stock} for 100x potential?"):
+            st.write(data['description'])
+        st.divider()
+        time.sleep(2) # Stay under 25-search limit
 
-with st.expander("Step 1: Check the 'Moat' (Competitive Advantage)"):
-    st.write("- Does this company do something others can't easily copy?")
-    st.write("- **Example:** CN Railway (CNR) owns tracks no one else can build.")
-
-with st.expander("Step 2: Revenue Growth vs. Stock Price"):
-    st.write("- Is the company actually making more money, or is the stock just 'hyped'?")
-    st.write("- Look for companies that consistently increase their sales every year.")
-
-with st.expander("Step 3: Management & Debt"):
-    st.write("- Do they have too much debt? High debt can kill growth if interest rates stay high.")
-    st.write("- Check if the CEO has a long track record of success.")
-
-st.warning("⚠️ Peer-to-peer advice: Historical growth does not guarantee future results. Diversify so you aren't reliant on just one 'bet'.")
+st.subheader("🧠 Peer-to-Peer Decision Tool")
+st.markdown("""
+### How to spot "Real" Growth vs. "Hype"
+1. **The 'Mirror' Test:** If the Price Growth is 500% but Revenue Growth is 0%, the stock is likely **hyped**. If both are growing together, it's a **strong engine**.
+2. **The Profit Margin:** Does the company keep a lot of the money it makes? (e.g., CSU.TO has very high margins because software is cheap to replicate).
+3. **The 5-Year Floor:** Look at the chart. Even during bad years, does the "floor" of the price keep getting higher? That is the sign of a 10-year winner.
+""")
