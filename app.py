@@ -5,47 +5,45 @@ import time
 
 st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
-st.title("🛡️ Live Frontier Discovery Engine")
-st.info("Unbiased Protocol: Industry-led scanning (2-Year Momentum Focus).")
+st.title("🛡️ North American Frontier Engine")
+st.info("Unbiased Protocol: Scanning top 500 companies in the US and Canada. No fallbacks allowed.")
 
-# --- THE DYNAMIC SECTOR MAP ---
+# The core industry IDs used by the market
 industries = {
-    "🌀 Quantum & Advanced Tech": {"cad": "computer-hardware", "usd": "computer-hardware"},
-    "🔌 AI Infrastructure & Chips": {"cad": "semiconductors", "usd": "semiconductors"},
-    "🤖 Software & AI Platforms": {"cad": "software-infrastructure", "usd": "software-infrastructure"},
-    "🔥 Energy & Uranium (AI Fuel)": {"cad": "uranium", "usd": "uranium"},
-    "🏦 Core Wealth Compounders": {"cad": "banks-diversified", "usd": "banks-diversified"},
-    "🏗️ Infrastructure & Rail": {"cad": "railroads", "usd": "railroads"}
+    "🌀 Quantum & Advanced Tech": "computer-hardware",
+    "🔌 AI Infrastructure & Chips": "semiconductors",
+    "🤖 Software & AI Platforms": "software-infrastructure",
+    "🔥 Energy & Uranium (AI Fuel)": "uranium",
+    "🏦 Core Wealth Compounders": "banks-diversified",
+    "🏗️ Infrastructure & Rail": "railroads"
 }
 
 tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Dashboard (CAD)", "🇺🇸 US Dashboard (USD)"])
 
 def build_dashboard(is_cad_mode):
-    for label, keys in industries.items():
+    for label, ind_key in industries.items():
         st.header(label)
         try:
-            # We fetch the industry but expand the search significantly
-            ind_data = yf.Industry(keys["cad" if is_cad_mode else "usd"])
-            
-            # We pull the top 300 to ensure we find CAD stocks buried in the global list
-            pool_players = ind_data.top_companies.index.tolist()[:300] 
+            # Step 1: Query the actual industry
+            ind_data = yf.Industry(ind_key)
+            # Step 2: Pool the top 500 to ensure we catch TSX leaders
+            pool_players = ind_data.top_companies.index.tolist()[:500] 
             
             if is_cad_mode:
-                # Filter for TSX (.TO) or TSX-V (.V)
+                # Filter strictly for Toronto or Venture exchanges
                 display_players = [t for t in pool_players if ".TO" in t or ".V" in t][:4]
             else:
-                # Filter for US tickers
+                # Filter for US-only (NYSE/Nasdaq)
                 display_players = [t for t in pool_players if ".TO" not in t and ".V" not in t][:4]
 
-            # If the scanner STILL finds nothing, we give a live search link instead of a fallback
             if not display_players:
-                st.warning(f"No global 'Top 300' leaders for {label} found on TSX today.")
+                st.warning(f"No major {label} leaders currently found in the {'CAD' if is_cad_mode else 'USD'} market.")
                 continue
 
             cols = st.columns(4)
             for i, ticker in enumerate(display_players):
                 t_obj = yf.Ticker(ticker)
-                # 2-Year timeframe as discussed
+                # 2-Year momentum focus
                 hist = t_obj.history(period="2y") 
                 if not hist.empty:
                     with cols[i]:
@@ -53,9 +51,9 @@ def build_dashboard(is_cad_mode):
                         growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
                         st.metric(label=ticker, value=f"${curr_p:.2f}", delta=f"{growth:.1f}% (2Y)")
                         st.line_chart(hist['Close'], height=150)
-                time.sleep(0.4) 
-        except Exception:
-            st.write(f"Scanning {label} leaders...")
+                time.sleep(0.4) # Protective delay for API stability
+        except:
+            st.error(f"Error scanning {label}. The market data may be temporarily unavailable.")
         st.divider()
 
 with tab_cad:
@@ -63,3 +61,6 @@ with tab_cad:
 
 with tab_usd:
     build_dashboard(is_cad_mode=False)
+
+st.subheader("🧠 The Unbiased Signal")
+st.write("If a sector appears empty, it means there are no companies in that industry currently large enough to be in the Top 500 globally. This is a sign of extreme 'early stage' risk.")
