@@ -1,59 +1,64 @@
 import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
-import time
 
 st.set_page_config(page_title="AI Stock Tracker", layout="wide")
 
-st.title("📈 AI-Powered Stock Research Dashboard")
+# --- EM716SRFFX4E4SKM ---
+API_KEY = "EM716SRFFX4E4SKM" 
+
+st.title("📈 Reliable Stock Research Dashboard")
+
+def get_stock_data(symbol):
+    # This automatically converts "SHOP.TO" or "SHOP" into "TSX:SHOP"
+    symbol = symbol.upper().replace(".TO", "")
+    if ":" not in symbol:
+        # We assume you want Canadian stocks first; if not, you can type "AAPL"
+        api_symbol = f"TSX:{symbol}"
+    else:
+        api_symbol = symbol
+
+    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={api_symbol}&apikey={API_KEY}'
+    
+    try:
+        r = requests.get(url)
+        data = r.json()
+        
+        # If TSX doesn't work, try it as a US stock
+        if "Error Message" in data or "Note" in data:
+            url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}'
+            r = requests.get(url)
+            data = r.json()
+
+        if "Time Series (Daily)" in data:
+            df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient='index')
+            df.index = pd.to_datetime(df.index)
+            df = df.astype(float)
+            return df['4. close'].sort_index()
+    except:
+        return None
+    return None
 
 # --- RESEARCH & MONITORING ---
-ticker = st.text_input("Enter Ticker (e.g., SHOP.TO or AAPL):", "SHOP.TO")
+ticker = st.text_input("Enter Ticker (e.g., SHOP, TD, or AAPL):", "SHOP")
 
 if ticker:
-    try:
-        # Fetching basic history is usually safer than fetching 'info'
-        data = yf.download(ticker, period="5y")
-        if not data.empty:
-            st.subheader(f"5-Year History for {ticker}")
-            st.line_chart(data['Close'])
+    with st.spinner('Fetching market data...'):
+        price_data = get_stock_data(ticker)
+        if price_data is not None:
+            st.subheader(f"Recent History for {ticker}")
+            st.line_chart(price_data)
         else:
-            st.warning("No data found. Check the ticker symbol.")
-    except Exception as e:
-        st.error("Yahoo Finance is busy. Please wait 30 seconds and try again.")
-
-# --- AI STOCK PICKER ---
-if st.button("🚀 Run AI Research (Identify 100x Potential)"):
-    st.write("Analyzing market trends...")
-    # Pre-defined high-potential list to reduce API calls
-    picks = ["LSPD.TO", "WELL.TO", "BN.TO", "CSU.TO", "HIVE.TO"]
-    
-    st.success("AI Identified 5 High-Potential Canadian Stocks:")
-    
-    for stock in picks:
-        try:
-            # We fetch only the price to avoid the Rate Limit error
-            tick_data = yf.download(stock, period="1d")
-            price = tick_data['Close'].iloc[-1]
-            st.write(f"**{stock}** | Current Price: ${price:.2f} CAD")
-            # We add a tiny 1-second pause between each stock
-            time.sleep(1) 
-        except:
-            st.write(f"**{stock}** | Data temporarily unavailable")
+            st.warning("Limit Reached: Alpha Vantage allows 25 searches per day on the free version. Please try again tomorrow!")
 
 # --- INVESTMENT TRACKER ---
 st.divider()
 st.subheader("💰 $100 Simulation Tracker")
-portfolio = ["SHOP.TO", "TD.TO", "ATZ.TO"]
-
+portfolio = ["SHOP", "TD", "ATZ"]
 cols = st.columns(len(portfolio))
+
 for i, p_ticker in enumerate(portfolio):
-    try:
-        p_data = yf.download(p_ticker, period="5d")
-        current_price = float(p_data['Close'].iloc[-1])
-        # Showing growth from 5 days ago as a simple trend
-        prev_price = float(p_data['Close'].iloc[0])
-        delta = ((current_price - prev_price) / prev_price) * 100
-        cols[i].metric(label=p_ticker, value=f"${current_price:.2f}", delta=f"{delta:.2f}%")
-    except:
-        cols[i].write(f"Error loading {p_ticker}")
+    p_data = get_stock_data(p_ticker)
+    if p_data is not None:
+        current_price = p_data.iloc[-1]
+        cols[i].metric(label=p_ticker, value=f"${current_price:.2f} CAD")
