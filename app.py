@@ -9,7 +9,6 @@ st.title("🛡️ Live Frontier Discovery Engine")
 st.info("Unbiased Protocol: Industry-led scanning. Navigate between CAD and USD tabs below.")
 
 # --- THE DYNAMIC INDUSTRY MAP ---
-# I have optimized these keys to ensure they catch the Canadian leaders too.
 industries = {
     "🌀 Quantum & Advanced Tech": "computer-hardware",
     "🔌 AI Infrastructure & Chips": "semiconductors",
@@ -19,6 +18,7 @@ industries = {
     "🏗️ Infrastructure & Rail": "railroads"
 }
 
+# Create two tabs
 tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Dashboard (CAD)", "🇺🇸 US Dashboard (USD)"])
 
 def build_dashboard(is_cad_mode):
@@ -26,18 +26,18 @@ def build_dashboard(is_cad_mode):
         st.header(label)
         try:
             ind_data = yf.Industry(ind_key)
-            # INCREASED POOL: We check the top 100 global companies to find our Canadian gems
+            # CHANGE: Increased from 15 to 100 to find Canadian stocks buried in the global list
             pool_players = ind_data.top_companies.index.tolist()[:100] 
             
             if is_cad_mode:
-                # Filter for TSX (.TO) or TSX-V (.V)
+                # Looks for .TO (Toronto) or .V (Venture)
                 display_players = [t for t in pool_players if ".TO" in t or ".V" in t][:4]
             else:
-                # Filter for US tickers (usually no dot or .TO)
+                # Looks for US tickers (no dots)
                 display_players = [t for t in pool_players if ".TO" not in t and ".V" not in t][:4]
 
             if not display_players:
-                st.write(f"No major {'CAD' if is_cad_mode else 'USD'} leaders found in the top 100 for this sector.")
+                st.write(f"No major {'CAD' if is_cad_mode else 'USD'} leaders currently in the Top 100.")
                 continue
 
             cols = st.columns(4)
@@ -57,6 +57,7 @@ def build_dashboard(is_cad_mode):
             st.write(f"Scanning {label} leaders...")
         st.divider()
 
+# Fill the Tabs
 with tab_cad:
     build_dashboard(is_cad_mode=True)
 
@@ -64,4 +65,4 @@ with tab_usd:
     build_dashboard(is_cad_mode=False)
 
 st.subheader("🧠 Peer-to-Peer Decision Tool")
-st.write("If you see a new ticker today that wasn't there yesterday, the market is shifting.")
+st.write("Compare the CAD 'Staircases' against the USD leaders to minimize conversion risk.")
