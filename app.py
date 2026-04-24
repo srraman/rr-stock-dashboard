@@ -3,10 +3,10 @@ import pandas as pd
 import yfinance as yf
 import time
 
-st.set_page_config(page_title="Live Frontier Discovery", layout="wide")
+st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
 st.title("🛡️ Live Frontier Discovery Engine")
-st.info("Unbiased Protocol: Tracking live industry leaders with CAD/USD detection.")
+st.info("Unbiased Protocol: Industry-led scanning. Navigate between CAD and USD tabs below.")
 
 # --- THE DYNAMIC INDUSTRY MAP ---
 industries = {
@@ -18,42 +18,50 @@ industries = {
     "🏗️ Infrastructure & Rail": "railroads"
 }
 
-for label, ind_key in industries.items():
-    st.header(label)
-    try:
-        # Step 1: Query the actual industry for its current leaders
-        ind_data = yf.Industry(ind_key)
-        top_players = ind_data.top_companies.index.tolist()[:4] 
-        
-        cols = st.columns(4)
-        for i, ticker in enumerate(top_players):
-            t_obj = yf.Ticker(ticker)
-            hist = t_obj.history(period="5y")
-            
-            if not hist.empty:
-                with cols[i]:
-                    # --- NEW CAD UPDATE START ---
-                    # Check the ticker or the info to see if it's Canadian
-                    # .TO means Toronto, .V means Venture. Both are CAD.
-                    is_cad = ".TO" in ticker or ".V" in ticker or t_obj.info.get('currency') == 'CAD'
-                    currency_label = "CAD" if is_cad else "USD"
-                    # --- NEW CAD UPDATE END ---
+# Create two tabs for the two currencies
+tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Dashboard (CAD)", "🇺🇸 US Dashboard (USD)"])
 
-                    curr_p = hist['Close'].iloc[-1]
-                    growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
-                    
-                    # Displaying the currency clearly so you don't pay surprises
-                    st.metric(
-                        label=f"{ticker} ({currency_label})", 
-                        value=f"${curr_p:.2f}", 
-                        delta=f"{growth:.1f}% (5Y)"
-                    )
-                    st.line_chart(hist['Close'], height=150)
+def build_dashboard(is_cad_mode):
+    for label, ind_key in industries.items():
+        st.header(label)
+        try:
+            ind_data = yf.Industry(ind_key)
+            # Pull a larger pool so we can filter for the specific currency/exchange
+            pool_players = ind_data.top_companies.index.tolist()[:15] 
             
-            time.sleep(0.5) 
-    except Exception:
-        st.write(f"Scanning the {label} sector...")
-    st.divider()
+            # Filter logic: CAD looks for '.TO', USD looks for no suffix or US suffixes
+            if is_cad_mode:
+                display_players = [t for t in pool_players if ".TO" in t][:4]
+            else:
+                display_players = [t for t in pool_players if ".TO" not in t][:4]
+
+            if not display_players:
+                st.write(f"No major {'CAD' if is_cad_mode else 'USD'} leaders currently trending in this sector.")
+                continue
+
+            cols = st.columns(4)
+            for i, ticker in enumerate(display_players):
+                t_obj = yf.Ticker(ticker)
+                hist = t_obj.history(period="5y")
+                
+                if not hist.empty:
+                    with cols[i]:
+                        curr_p = hist['Close'].iloc[-1]
+                        growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
+                        st.metric(label=ticker, value=f"${curr_p:.2f}", delta=f"{growth:.1f}% (5Y)")
+                        st.line_chart(hist['Close'], height=150)
+                
+                time.sleep(0.4) 
+        except Exception:
+            st.write(f"Scanning {label} leaders...")
+        st.divider()
+
+# Fill the Tabs
+with tab_cad:
+    build_dashboard(is_cad_mode=True)
+
+with tab_usd:
+    build_dashboard(is_cad_mode=False)
 
 st.subheader("🧠 Peer-to-Peer Decision Tool")
-st.write("Look for the (CAD) tag to avoid conversion fees. If a (USD) stock has a much stronger 'Staircase' than the CAD options, that's when you decide if the fee is worth the growth.")
+st.write("Compare the CAD 'Staircases' against the USD leaders. Look for the smoothest growth lines to minimize risk.")
