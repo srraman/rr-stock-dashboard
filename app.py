@@ -3,71 +3,61 @@ import requests
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Growth Potential Analyzer", layout="wide")
+st.set_page_config(page_title="Growth Research", layout="wide")
 
 API_KEY = "EM716SRFFX4E4SKM" 
 
 st.title("🛡️ 5-Year Growth & Potential Analyzer")
-st.info("Goal: Identify stocks where the business growth matches the price growth.")
 
-def get_growth_data(symbol):
-    symbol = symbol.upper().replace(".TO", "")
-    # 1. Get Price Data
-    url_price = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=TSX:{symbol}&outputsize=full&apikey={API_KEY}'
-    # 2. Get Fundamental Data (Revenue)
-    url_rev = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol=TSX:{symbol}&apikey={API_KEY}'
+def get_clean_data(symbol):
+    # Standardize for the data provider
+    clean_ticker = symbol.upper().replace(".TO", "")
+    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=TSX:{clean_ticker}&outputsize=full&apikey={API_KEY}'
     
     try:
-        r_p = requests.get(url_price).json()
-        r_r = requests.get(url_rev).json()
+        response = requests.get(url)
+        data = response.json()
         
-        prices = pd.DataFrame.from_dict(r_p["Time Series (Daily)"], orient='index')
-        prices.index = pd.to_datetime(prices.index)
-        prices = prices['4. close'].astype(float).sort_index()
-        
-        # We only want the last 5 years
-        five_y = prices[prices.index >= (pd.Timestamp.now() - pd.DateOffset(years=5))]
-        
-        return {
-            "prices": five_y,
-            "revenue_growth": r_r.get("QuarterlyRevenueGrowthYOY", "N/A"),
-            "profit_margin": r_r.get("ProfitMargin", "N/A"),
-            "description": r_r.get("Description", "No description available.")
-        }
+        if "Note" in data:
+            st.warning(f"⏸️ Waiting for {symbol} data... (Free limit reached. I will retry in 60 seconds.)")
+            return "LIMIT"
+            
+        if "Time Series (Daily)" in data:
+            df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient='index')
+            df.index = pd.to_datetime(df.index)
+            # Use '4. close' as the price
+            prices = df['4. close'].astype(float).sort_index()
+            # Only show last 5 years
+            return prices.last('1825D') # 1825 days = 5 years
     except:
         return None
+    return None
 
 # --- RESEARCH LIST ---
-# These 4 represent different 'types' of growth in 2026
-research_list = ["CSU.TO", "SHOP.TO", "BN.TO", "CNR.TO"]
+stocks = ["CSU.TO", "SHOP.TO", "BN.TO", "CNR.TO"]
 
-for stock in research_list:
-    data = get_growth_data(stock)
-    if data:
-        st.subheader(f"Analysis: {stock}")
-        col1, col2, col3 = st.columns([1, 1, 2])
-        
-        with col1:
-            st.metric("Current Price", f"${data['prices'].iloc[-1]:.2f}")
-            st.write(f"**Revenue Growth (YoY):** {data['revenue_growth']}")
-        
-        with col2:
-            growth_pct = ((data['prices'].iloc[-1] - data['prices'].iloc[0]) / data['prices'].iloc[0]) * 100
-            st.metric("5-Year Price Growth", f"{growth_pct:.1f}%")
-            st.write(f"**Profit Margin:** {data['profit_margin']}")
+st.subheader("📈 5-Year Performance Charts")
 
-        with col3:
-            st.line_chart(data['prices'])
-            
-        with st.expander(f"Why consider {stock} for 100x potential?"):
-            st.write(data['description'])
-        st.divider()
-        time.sleep(2) # Stay under 25-search limit
+for s in stocks:
+    result = get_clean_data(s)
+    
+    if result == "LIMIT":
+        time.sleep(60) # If we hit the limit, wait a full minute
+    elif result is not None:
+        # Create a clean box for each stock
+        with st.container():
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                current_p = result.iloc[-1]
+                st.metric(label=s, value=f"${current_p:.2f}")
+                st.write("Target: 10-Year Growth")
+            with col2:
+                # This creates the actual chart you are looking for
+                st.line_chart(result)
+            st.divider()
+    
+    # Essential pause between stocks to stay under the free limit
+    time.sleep(15) 
 
 st.subheader("🧠 Peer-to-Peer Decision Tool")
-st.markdown("""
-### How to spot "Real" Growth vs. "Hype"
-1. **The 'Mirror' Test:** If the Price Growth is 500% but Revenue Growth is 0%, the stock is likely **hyped**. If both are growing together, it's a **strong engine**.
-2. **The Profit Margin:** Does the company keep a lot of the money it makes? (e.g., CSU.TO has very high margins because software is cheap to replicate).
-3. **The 5-Year Floor:** Look at the chart. Even during bad years, does the "floor" of the price keep getting higher? That is the sign of a 10-year winner.
-""")
+st.write("Use the 'Mirror Test' below to evaluate these charts once they load.")
