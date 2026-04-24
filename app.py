@@ -4,28 +4,43 @@ import requests
 import io
 import time
 
-# YOUR API KEY
+# YOUR RETRIEVED API KEY
 API_KEY = "EM716SRFFX4E4SKM"
 
-st.set_page_config(page_title="Dynamic CA/US Discovery", layout="wide")
-st.title("🛡️ Dynamic CA/US Frontier Discovery")
-st.info("Protocol: Live Market Scan | TSX & US Only | Under $150 | No ETFs | Alpha Vantage")
+st.set_page_config(page_title="Stable Frontier Engine", layout="wide")
+st.title("🛡️ Stable CA/US Frontier Discovery")
+st.info("Protocol: Error-Resistant Discovery | TSX & US Only | Under $150 | Alpha Vantage")
 
 @st.cache_data(ttl=3600)
 def get_all_active_listings():
-    """Downloads the entire global listing status from Alpha Vantage once per hour."""
+    """Downloads listings with error handling for API limits."""
     url = f'https://www.alphavantage.co/query?function=LISTING_STATUS&apikey={API_KEY}'
-    r = requests.get(url)
-    df = pd.read_csv(io.StringIO(r.text))
-    # Filter for common stocks only (No ETFs)
-    return df[df['assetType'] == 'Stock']
+    try:
+        r = requests.get(url)
+        # If Alpha Vantage sends an error, it's usually JSON. CSV starts with 'symbol'
+        if r.text.startswith("{"):
+            st.error("⚠️ Alpha Vantage API Limit Reached. Please wait a few minutes or check your daily quota (25/day).")
+            return pd.DataFrame()
+        
+        df = pd.read_csv(io.StringIO(r.text))
+        # Ensure the column exists before filtering
+        if 'assetType' in df.columns:
+            return df[df['assetType'] == 'Stock']
+        return df
+    except Exception as e:
+        st.error(f"Connection Error: {e}")
+        return pd.DataFrame()
 
 def get_stock_price(symbol):
-    """Fetches the latest price and history for a discovered symbol."""
+    """Fetches price with rate-limit protection."""
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}'
     try:
         r = requests.get(url)
         data = r.json()
+        if "Note" in data:
+            st.warning("Rate limit hit. Slowing down...")
+            time.sleep(10) # Wait if we are going too fast
+            return None
         if "Time Series (Daily)" in data:
             df = pd.DataFrame(data["Time Series (Daily)"]).T
             df.index = pd.to_datetime(df.index)
@@ -35,50 +50,45 @@ def get_stock_price(symbol):
         return None
     return None
 
-# 1. Load all active stocks globally
-with st.spinner("Scanning Global Exchanges..."):
-    all_listings = get_all_active_listings()
+# Execution logic
+all_listings = get_all_active_listings()
 
-tab_cad, tab_usd = st.tabs(["🇨🇦 Canada (TSX)", "🇺🇸 USA (NYSE/NASDAQ)"])
+if not all_listings.empty:
+    tab_cad, tab_usd = st.tabs(["🇨🇦 Canada (TSX)", "🇺🇸 USA (NYSE/NASDAQ)"])
 
-def process_market(is_cad):
-    # 2. Filter strictly by Exchange
-    if is_cad:
-        # TSX stocks usually have no suffix in the listing file but are marked as 'TSX'
-        market_df = all_listings[all_listings['exchange'] == 'TSX']
-    else:
-        market_df = all_listings[all_listings['exchange'].isin(['NYSE', 'NASDAQ'])]
-
-    # 3. Dynamic Discovery: Pick 6 active companies to analyze
-    # We sample from the 'Active' status list to ensure variety
-    discovered_list = market_df.sample(20)['symbol'].tolist()
-    
-    cols = st.columns(3)
-    display_count = 0
-    
-    for ticker in discovered_list:
-        if display_count >= 6: break # Alpha Vantage free tier limit
+    def run_market(is_cad):
+        # Filter strictly by region
+        if is_cad:
+            market_df = all_listings[all_listings['exchange'] == 'TSX']
+        else:
+            market_df = all_listings[all_listings['exchange'].isin(['NYSE', 'NASDAQ'])]
         
-        # In Alpha Vantage, TSX stocks need the .TRT suffix for price data
-        price_ticker = f"{ticker}.TRT" if is_cad else ticker
+        # Pull a random sample so it's different every time
+        sample_tickers = market_df.sample(min(15, len(market_df)))['symbol'].tolist()
         
-        hist = get_stock_price(price_ticker)
-        if hist is not None:
-            curr_p = hist.iloc[-1]
+        cols = st.columns(3)
+        display_count = 0
+        
+        for ticker in sample_tickers:
+            if display_count >= 3: break # Keep it small to stay under free tier limits
             
-            # 4. PRICE FILTER: Strictly under $150
-            if curr_p < 150:
-                growth = ((curr_p - hist.iloc[0]) / hist.iloc[0]) * 100
-                with cols[display_count % 3]:
-                    st.metric(label=f"{ticker} ({'TSX' if is_cad else 'US'})", 
-                              value=f"${curr_p:.2f}", 
-                              delta=f"{growth:.1f}% (2Y)")
-                    st.line_chart(hist)
-                    display_count += 1
-                time.sleep(1) # API Rate Limit protection
+            # Use .TRT for Toronto stocks in price queries
+            lookup = f"{ticker}.TRT" if is_cad else ticker
+            hist = get_stock_price(lookup)
+            
+            if hist is not None:
+                curr_p = hist.iloc[-1]
+                if curr_p < 150:
+                    growth = ((curr_p - hist.iloc[0]) / hist.iloc[0]) * 100
+                    with cols[display_count % 3]:
+                        st.metric(label=f"{ticker}", value=f"${curr_p:.2f}", delta=f"{growth:.1f}% (2Y)")
+                        st.line_chart(hist)
+                        display_count += 1
+            time.sleep(2) # Mandatory 2-second pause between stocks for free tier
 
-with tab_cad:
-    process_market(is_cad=True)
-
-with tab_usd:
-    process_market(is_cad=False)
+    with tab_cad:
+        run_market(is_cad=True)
+    with tab_usd:
+        run_market(is_cad=False)
+else:
+    st.write("Could not retrieve market data. Please refresh in a moment.")
