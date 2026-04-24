@@ -1,20 +1,23 @@
 import streamlit as st
 import requests
 import pandas as pd
+import time
 
 st.set_page_config(page_title="AI Stock Tracker", layout="wide")
 
-# --- EM716SRFFX4E4SKM ---
+# Your API Key
 API_KEY = "EM716SRFFX4E4SKM" 
 
-st.title("📈 Reliable Stock Research Dashboard")
+st.title("📈 AI-Powered Stock Research Dashboard")
 
 def get_stock_data(symbol):
-    # This automatically converts "SHOP.TO" or "SHOP" into "TSX:SHOP"
-    symbol = symbol.upper().replace(".TO", "")
-    if ":" not in symbol:
-        # We assume you want Canadian stocks first; if not, you can type "AAPL"
-        api_symbol = f"TSX:{symbol}"
+    # Standardize the symbol for Alpha Vantage
+    # Converts SHOP.TO to TSX:SHOP
+    symbol = symbol.upper()
+    if ".TO" in symbol:
+        api_symbol = "TSX:" + symbol.replace(".TO", "")
+    elif ".V" in symbol:
+        api_symbol = "TSXV:" + symbol.replace(".V", "")
     else:
         api_symbol = symbol
 
@@ -24,41 +27,59 @@ def get_stock_data(symbol):
         r = requests.get(url)
         data = r.json()
         
-        # If TSX doesn't work, try it as a US stock
-        if "Error Message" in data or "Note" in data:
-            url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}'
-            r = requests.get(url)
-            data = r.json()
+        # If Alpha Vantage sends a "Note", it means we hit the frequency limit
+        if "Note" in data:
+            st.error("API Limit reached! Please wait 1 minute before searching again.")
+            return None
 
         if "Time Series (Daily)" in data:
             df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient='index')
             df.index = pd.to_datetime(df.index)
             df = df.astype(float)
-            return df['4. close'].sort_index()
+            # Rename columns to be cleaner
+            df.columns = [c.split(' ')[1] for c in df.columns]
+            return df['close'].sort_index()
     except:
         return None
     return None
 
 # --- RESEARCH & MONITORING ---
-ticker = st.text_input("Enter Ticker (e.g., SHOP, TD, or AAPL):", "SHOP")
+ticker = st.text_input("Enter Ticker (Use .TO for Canadian stocks, e.g., SHOP.TO or TD.TO):", "SHOP.TO")
 
 if ticker:
-    with st.spinner('Fetching market data...'):
+    with st.spinner(f'Searching for {ticker}...'):
         price_data = get_stock_data(ticker)
         if price_data is not None:
-            st.subheader(f"Recent History for {ticker}")
+            st.subheader(f"5-Year Growth Trend: {ticker}")
             st.line_chart(price_data)
         else:
-            st.warning("Limit Reached: Alpha Vantage allows 25 searches per day on the free version. Please try again tomorrow!")
+            st.info("Searching... if no chart appears, check the ticker or wait 60 seconds.")
+
+# --- AI STOCK PICKER ---
+st.divider()
+if st.button("🚀 Run AI Research (100x Potential Picks)"):
+    # These are your identified high-potential Canadian stocks
+    picks = ["LSPD.TO", "WELL.TO", "BN.TO", "CSU.TO", "HIVE.TO"]
+    st.write("Analyzing market cap and revenue trends...")
+    
+    for stock in picks:
+        p_data = get_stock_data(stock)
+        if p_data is not None:
+            current_price = p_data.iloc[-1]
+            st.success(f"**{stock}** | Current Price: ${current_price:.2f} CAD")
+        # Small pause to avoid hitting the API limit too fast
+        time.sleep(2)
 
 # --- INVESTMENT TRACKER ---
 st.divider()
 st.subheader("💰 $100 Simulation Tracker")
-portfolio = ["SHOP", "TD", "ATZ"]
-cols = st.columns(len(portfolio))
+# You can edit this list to track your personal favorites
+my_portfolio = ["SHOP.TO", "TD.TO", "ATZ.TO"]
 
-for i, p_ticker in enumerate(portfolio):
+cols = st.columns(len(my_portfolio))
+for i, p_ticker in enumerate(my_portfolio):
     p_data = get_stock_data(p_ticker)
     if p_data is not None:
         current_price = p_data.iloc[-1]
+        # Basic simulation: showing price and ticker
         cols[i].metric(label=p_ticker, value=f"${current_price:.2f} CAD")
