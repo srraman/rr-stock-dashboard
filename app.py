@@ -6,9 +6,9 @@ import time
 st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
 st.title("🛡️ North American Frontier Engine")
-st.info("Unbiased Protocol: 100% Dynamic Discovery for Companies & Sector Funds. No hand-picked lists.")
+st.info("Unbiased Protocol: Scanning TSX & US Exchanges. Displaying leaders priced under $150.")
 
-# Dynamic Industry IDs for the 2026 market
+# Dynamic Industry IDs
 industries = {
     "🌀 Quantum & Advanced Tech": "computer-hardware",
     "🔌 AI Infrastructure & Chips": "semiconductors", 
@@ -24,45 +24,49 @@ def build_dashboard(is_cad_mode):
     for label, ind_key in industries.items():
         st.header(label)
         try:
-            # --- DYNAMIC DISCOVERY ENGINE ---
             ind_data = yf.Industry(ind_key)
-            # Fetch a deep pool to find CAD players and specialized ETFs
-            pool_players = ind_data.top_companies.index.tolist()[:500] 
+            # Search a very deep pool to find CAD names and mid-priced US names
+            pool_players = ind_data.top_companies.index.tolist()[:750] 
             
+            # Filter by Exchange
             if is_cad_mode:
-                # Filter for TSX/Venture
-                display_players = [t for t in pool_players if t.endswith((".TO", ".V"))]
+                exchange_players = [t for t in pool_players if t.endswith((".TO", ".V"))]
             else:
-                # Filter for Major US (no dots)
-                display_players = [t for t in pool_players if "." not in t]
+                exchange_players = [t for t in pool_players if "." not in t]
 
-            if not display_players:
-                st.warning(f"No active leaders found for {label} on this exchange today.")
+            valid_stocks = []
+            
+            # Filter by Price and Data Quality
+            for ticker in exchange_players:
+                if len(valid_stocks) >= 4: break # We only need the top 4 per sector
+                
+                t_obj = yf.Ticker(ticker)
+                hist = t_obj.history(period="2y")
+                
+                if not hist.empty:
+                    current_price = hist['Close'].iloc[-1]
+                    # PRICE CEILING: Only show stocks under $150 (CAD or USD)
+                    if current_price < 150:
+                        valid_stocks.append((ticker, hist))
+                time.sleep(0.1) # Rapid scan delay
+
+            if not valid_stocks:
+                st.warning(f"No leaders under $150 found for {label} on this exchange.")
                 continue
 
-            # --- SEPARATING COMPANIES FROM FUNDS ---
-            # We look for 'ETF' in the name or specific fund characteristics
-            companies = display_players[:4] # Top 4 individual stocks
-            
-            # --- DISPLAY SECTION ---
             cols = st.columns(4)
-            for i, ticker in enumerate(companies):
-                t_obj = yf.Ticker(ticker)
-                # 2-Year window for AI/Quantum relevancy
-                hist = t_obj.history(period="2y") 
-                if not hist.empty:
-                    with cols[i]:
-                        curr_p = hist['Close'].iloc[-1]
-                        growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
-                        
-                        currency = "CAD" if is_cad_mode else "USD"
-                        st.metric(label=f"{ticker} ({currency})", 
-                                  value=f"${curr_p:.2f}", 
-                                  delta=f"{growth:.1f}% (2Y)")
-                        st.line_chart(hist['Close'], height=150)
-                time.sleep(0.3) 
-        except Exception:
-            st.write(f"Refreshing {label} market data...")
+            for i, (ticker, hist) in enumerate(valid_stocks):
+                with cols[i]:
+                    curr_p = hist['Close'].iloc[-1]
+                    growth = ((curr_p - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
+                    currency = "CAD" if is_cad_mode else "USD"
+                    
+                    st.metric(label=f"{ticker} ({currency})", 
+                              value=f"${curr_p:.2f}", 
+                              delta=f"{growth:.1f}% (2Y)")
+                    st.line_chart(hist['Close'], height=150)
+        except:
+            continue
         st.divider()
 
 with tab_cad:
