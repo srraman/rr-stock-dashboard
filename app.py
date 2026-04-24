@@ -6,33 +6,34 @@ import time
 st.set_page_config(page_title="Frontier Discovery CAD/USD", layout="wide")
 
 st.title("🛡️ North American Frontier Engine")
-st.info("Unbiased Discovery: Searching TSX/V and US Exchanges for leaders under $150.")
+st.info("Unbiased Discovery: Scanning TSX & US Exchanges for 'Staircase' leaders under $150.")
 
-# Discovery Map: Using specific keywords that trigger Canadian junior tech
+# Discovery Map: Using keywords that trigger both Large-Cap and Junior TSX leaders
 discovery_map = {
-    "🌀 Quantum & Tech": "Quantum Computing Canada",
-    "🔌 AI Infrastructure": "AI Infrastructure TSX", 
-    "🤖 Software & AI": "AI Software Platforms Canada",
-    "🔥 Energy & Uranium": "Uranium Mining Canada",
-    "🏦 Core Wealth": "Bank Canada",
-    "🏗️ Infrastructure": "Engineering Infrastructure Canada"
+    "🌀 Quantum & Tech": ["Quantum", "Technology", "Robotics"],
+    "🔌 AI Infrastructure": ["Semiconductor", "Data Center", "Engineering"], 
+    "🤖 Software & AI": ["Software", "Artificial Intelligence"],
+    "🔥 Energy & Uranium": ["Uranium", "Energy Transition", "Nuclear"],
+    "🏦 Core Wealth": ["Bank", "Insurance", "Financial"],
+    "🏗️ Infrastructure": ["Railroad", "Construction", "Infrastructure"]
 }
 
 tab_cad, tab_usd = st.tabs(["🇨🇦 Canadian Listings (TSX/V)", "🇺🇸 US Listings (NYSE/Nasdaq)"])
 
 def build_dashboard(is_cad_mode):
-    for label, query_keyword in discovery_map.items():
+    for label, keywords in discovery_map.items():
         st.header(label)
         try:
-            # Step 1: Live Market Search
-            search = yf.Search(query_keyword, max_results=20)
+            # Step 1: Broad Search for the Sector
+            query = f"{keywords[0]} {'Canada' if is_cad_mode else 'USA'}"
+            search = yf.Search(query, max_results=25)
             
             valid_stocks = []
             for item in search.quotes:
                 ticker = item.get('symbol')
                 if not ticker: continue
                 
-                # STRICT Exchange filter
+                # STRICT Exchange filter (Force TSX/V for Canada)
                 if is_cad_mode:
                     if not ticker.endswith((".TO", ".V")): continue
                 else:
@@ -40,20 +41,20 @@ def build_dashboard(is_cad_mode):
                 
                 if len(valid_stocks) >= 4: break
                 
-                # Step 2: Fetch Data
+                # Step 2: Fetch 2-Year Data
                 t_obj = yf.Ticker(ticker)
                 hist = t_obj.history(period="2y")
                 
                 if not hist.empty:
                     curr_p = hist['Close'].iloc[-1]
-                    # Filter for affordability (<$150)
-                    if curr_p < 150:
+                    # Filter for affordability (<$150) and basic trading activity
+                    if curr_p < 150 and hist['Volume'].iloc[-1] > 500:
                         valid_stocks.append((ticker, hist))
                 
-                time.sleep(0.1)
+                time.sleep(0.1) # Protect against API throttling
 
             if not valid_stocks:
-                st.warning(f"No {label} leaders under $150 currently active.")
+                st.write(f"No active {label} leaders found under $150 on this exchange.")
                 continue
 
             # Step 3: UI Layout
